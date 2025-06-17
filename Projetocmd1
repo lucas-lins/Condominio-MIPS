@@ -1,0 +1,128 @@
+.data
+prompt:         .asciiz "\nDigite comando: "
+buffer:         .space 128
+
+msg_sucesso:    .asciiz "Morador adicionado com sucesso\n"
+msg_ap_invalido:.asciiz "Falha: AP invalido\n"
+msg_max_mor:    .asciiz "Falha: AP com numero max de moradores\n"
+
+moradores:      .space 4000       # 40 aptos * 5 moradores * 20 bytes
+
+.text
+.globl main
+
+main:
+loop:
+    # Mostra prompt
+    li $v0, 4
+    la $a0, prompt
+    syscall
+
+    # Lê comando
+    li $v0, 8
+    la $a0, buffer
+    li $a1, 128
+    syscall
+
+    # Verifica se começa com "ad_morador-"
+    la $t0, buffer
+    la $t1, cmd_prefix
+    li $t2, 0
+verifica_prefixo:
+    lb $t3, 0($t0)
+    lb $t4, 0($t1)
+    beqz $t4, le_ap   # se terminou prefixo
+    bne $t3, $t4, loop
+    addi $t0, $t0, 1
+    addi $t1, $t1, 1
+    j verifica_prefixo
+
+le_ap:
+    # Pega os 3 dígitos do apartamento
+    lb $t3, 0($t0)     # centena
+    lb $t4, 1($t0)     # dezena
+    lb $t5, 2($t0)     # unidade
+    addi $t3, $t3, -48
+    addi $t4, $t4, -48
+    addi $t5, $t5, -48
+    li $t6, 100
+    mul $t3, $t3, $t6
+    li $t6, 10
+    mul $t4, $t4, $t6
+    add $t7, $t3, $t4
+    add $t7, $t7, $t5      # t7 = número do apartamento
+
+    # Verifica se válido (101 a 1004)
+    li $t8, 101
+    li $t9, 1004
+    blt $t7, $t8, erro_ap
+    bgt $t7, $t9, erro_ap
+
+    # Calcula índice do AP (0 a 39)
+    li $t6, 100
+    divu $t7, $t6
+    mflo $a1       # andar
+    mfhi $a2       # unidade
+    addi $a1, $a1, -1
+    addi $a2, $a2, -1
+    li $t0, 4
+    mul $t1, $a1, $t0
+    add $t1, $t1, $a2   # índice do AP 0..39
+
+    # Offset = index * 100
+    li $t2, 100
+    mul $t3, $t1, $t2
+    la $t4, moradores
+    add $t4, $t4, $t3   # início do AP
+
+    # Verifica vaga (5 x 20 bytes)
+    li $t5, 0
+verifica_vaga:
+    li $t6, 5
+    beq $t5, $t6, erro_max
+    li $t7, 20
+    mul $t8, $t5, $t7
+    add $t9, $t4, $t8
+    lb $s0, 0($t9)
+    beqz $s0, achou_vaga
+    addi $t5, $t5, 1
+    j verifica_vaga
+
+achou_vaga:
+    # Copia nome do buffer (offset +5 depois do AP)
+    la $s1, buffer
+    addi $s1, $s1, 7      # pula 'ad_morador-'
+    addi $s1, $s1, 4      # pula '303-'
+    li $t0, 0
+copia_nome:
+    lb $t1, 0($s1)
+    beqz $t1, fim_copia
+    sb $t1, 0($t9)
+    addi $s1, $s1, 1
+    addi $t9, $t9, 1
+    addi $t0, $t0, 1
+    li $t2, 20
+    beq $t0, $t2, fim_copia
+    j copia_nome
+
+fim_copia:
+    li $v0, 4
+    la $a0, msg_sucesso
+    syscall
+    j loop
+
+erro_ap:
+    li $v0, 4
+    la $a0, msg_ap_invalido
+    syscall
+    j loop
+
+erro_max:
+    li $v0, 4
+    la $a0, msg_max_mor
+    syscall
+    j loop
+
+# Prefixo de comando
+.data
+cmd_prefix: .asciiz "ad_morador-"
